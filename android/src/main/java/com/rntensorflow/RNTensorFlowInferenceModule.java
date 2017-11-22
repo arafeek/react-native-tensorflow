@@ -13,10 +13,16 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
+import java.io.File;
 import java.nio.IntBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
+import android.os.Environment;
 
 import static com.rntensorflow.converter.ArrayConverter.*;
 
@@ -78,6 +84,67 @@ public class RNTensorFlowInferenceModule extends ReactContextBaseJavaModule {
     Session.Runner runner = session.runner();
 
     return new TfContext(session, runner, graph);
+  }
+
+
+  private float [] getImageData(String imagePath) {
+    // https://stackoverflow.com/questions/16804404/create-a-bitmap-drawable-from-file-path
+
+    // 1) Get a bitmap representation of the image
+    int width = 500;
+    int height = 200;
+    int channels = 3; // RGB only
+
+    float [] output = new float[width*height*channels];
+
+//    File sd = Environment.getExternalStorageDirectory();
+//    File image = new File(sd + imagePath, "my_image");
+    BitmapFactory.Options bitmapOpts = new BitmapFactory.Options();
+    // TODO: If this is null, throw an error
+    Bitmap bitmap = BitmapFactory.decodeFile(imagePath, bitmapOpts);
+    // need to make a copy as decoded bitmaps are readonly
+    Bitmap mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true);
+    // 2) Resize the bitmap to 500 x 200 (or whatever the model expects)
+    // TODO: make this usable for other image sizes
+    mutableBitmap.reconfigure(width, height, Bitmap.Config.ARGB_8888);
+    // 3) Convert this 500 x 200 x 4 image to a 500 x 200 x 3 pixel array
+    int red, green, blue, pixel;
+    int i = 0;
+    for (int x = 0; x < width; x++) {
+      for (int y = 0; y < height; y++) {
+        pixel = mutableBitmap.getPixel(x, y);
+        red = Color.red(pixel);
+        blue = Color.blue(pixel);
+        green = Color.green(pixel);
+
+        // TODO: find a better way than manually casting these
+        output[i] = (float) red;
+        output[++i] = (float) blue;
+        output[++i] = (float) green;
+      }
+    }
+
+    return output;
+  }
+
+  @ReactMethod
+  public void feedImage(String id, ReadableMap data, Promise promise) {
+    try {
+      String inputName = data.getString("name");
+      long[] shape = data.hasKey("shape") ? readableArrayToLongArray(data.getArray("shape")) : new long[0];
+
+      TfContext tfContext = tfContexts.get(id);
+      if (tfContext != null) {
+        String imagePath = data.getString("image");
+        float[] srcData = getImageData(imagePath);
+        tfContext.runner.feed(inputName, Tensor.create(shape, FloatBuffer.wrap(srcData)));
+        promise.resolve(true);
+      } else {
+        promise.reject(new IllegalStateException("Could not find tfContext for id"));
+      }
+    } catch (Exception e) {
+      promise.reject(e);
+    }
   }
 
   @ReactMethod

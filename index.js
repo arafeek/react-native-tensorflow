@@ -81,6 +81,11 @@ class TensorFlowInference {
     return RNTensorFlowInference.feed(this.id, data)
   }
 
+  async feedImage(data) {
+    await this.init
+    return RNTensorFlowInference.feedImage(this.id, data)
+  }
+
   async run(outputNames, withStats) {
     await this.init
     return RNTensorFlowInference.run(this.id, outputNames, withStats !== undefined ? withStats : false)
